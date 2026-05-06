@@ -1,44 +1,30 @@
 package com.example.mytodo.desktop.ui
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
-import androidx.compose.runtime.toMutableStateList
 import com.example.mytodo.desktop.data.Priority
 import com.example.mytodo.desktop.data.Scope
 import com.example.mytodo.desktop.data.TodoEntity
+import com.example.mytodo.desktop.data.TodoRepository
 import com.example.mytodo.desktop.ui.components.anchorDateOf
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalTime
-import java.util.UUID
 
 enum class TodoFilter { ALL, ACTIVE, DONE }
 
-class TodoState {
-    val todos: SnapshotStateList<TodoEntity> = mutableListOf<TodoEntity>(
-        TodoEntity(
-            id = UUID.randomUUID().toString(),
-            text = "Compose Desktop 구조 잡기",
-            priority = Priority.HIGH,
-            scope = Scope.DAY,
-            startTime = LocalTime.of(9, 0),
-            endTime = LocalTime.of(11, 30),
-        ),
-        TodoEntity(
-            id = UUID.randomUUID().toString(),
-            text = "Firestore REST 인증 흐름 설계",
-            priority = Priority.MEDIUM,
-            scope = Scope.DAY,
-            done = true,
-        ),
-        TodoEntity(
-            id = UUID.randomUUID().toString(),
-            text = "이번 주 회고 작성",
-            priority = Priority.LOW,
-            scope = Scope.WEEK,
-        ),
-    ).toMutableStateList()
+class TodoState(
+    private val repo: TodoRepository,
+    private val scope: CoroutineScope,
+) {
+    private data class CacheKey(val scope: Scope, val anchor: LocalDate)
 
     var sortByPriority by mutableStateOf(false)
         private set
@@ -46,6 +32,50 @@ class TodoState {
         private set
     var selectedDate by mutableStateOf(LocalDate.now())
         private set
+    var loadError by mutableStateOf<String?>(null)
+        private set
+
+    private val cache: MutableMap<CacheKey, SnapshotStateList<TodoEntity>> = mutableMapOf()
+    private var activeKey: CacheKey? = null
+    private var activeJob: Job? = null
+
+    private val debounceMs = 1_000L
+    private val pollIntervalMs = 15_000L
+
+    fun setActive(scope: Scope) {
+        val anchor = scope.anchorDateOf(selectedDate)
+        val key = CacheKey(scope, anchor)
+        if (activeKey == key && activeJob?.isActive == true) return
+        activeKey = key
+        cache.getOrPut(key) { mutableStateListOf() }
+        activeJob?.cancel()
+        activeJob = this.scope.launch {
+            delay(debounceMs)
+            while (isActive) {
+                refresh(key)
+                delay(pollIntervalMs)
+            }
+        }
+    }
+
+    fun stop() {
+        activeJob?.cancel()
+        activeJob = null
+        activeKey = null
+        cache.clear()
+    }
+
+    private suspend fun refresh(key: CacheKey) {
+        try {
+            val remote = repo.fetchByScopeAndDate(key.scope, key.anchor)
+            val list = cache.getOrPut(key) { mutableStateListOf() }
+            list.clear()
+            list.addAll(remote)
+            loadError = null
+        } catch (t: Throwable) {
+            loadError = t.message
+        }
+    }
 
     fun toggleSort() {
         sortByPriority = !sortByPriority
@@ -69,22 +99,31 @@ class TodoState {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
         val anchor = scope.anchorDateOf(selectedDate)
-        todos.add(
-            TodoEntity(
-                id = UUID.randomUUID().toString(),
-                text = trimmed,
-                priority = priority,
-                scope = scope,
-                targetDate = anchor,
-                startTime = startTime,
-                endTime = endTime,
-            ),
-        )
+        val key = CacheKey(scope, anchor)
+        this.scope.launch {
+            try {
+                val created = repo.add(trimmed, priority, scope, anchor, startTime, endTime)
+                if (created != null) {
+                    cache.getOrPut(key) { mutableStateListOf() }.add(created)
+                }
+            } catch (t: Throwable) {
+                loadError = "동기화 실패: ${t.message}"
+            }
+        }
     }
 
     fun toggle(id: String, done: Boolean) {
-        val idx = todos.indexOfFirst { it.id == id }
-        if (idx >= 0) todos[idx] = todos[idx].copy(done = done)
+        cache.values.forEach { list ->
+            val idx = list.indexOfFirst { it.id == id }
+            if (idx >= 0) list[idx] = list[idx].copy(done = done)
+        }
+        scope.launch {
+            try {
+                repo.setDone(id, done)
+            } catch (t: Throwable) {
+                loadError = "동기화 실패: ${t.message}"
+            }
+        }
     }
 
     fun update(
@@ -96,24 +135,40 @@ class TodoState {
     ) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
-        val idx = todos.indexOfFirst { it.id == id }
-        if (idx >= 0) {
-            todos[idx] = todos[idx].copy(
-                text = trimmed,
-                priority = priority,
-                startTime = startTime,
-                endTime = endTime,
-            )
+        cache.values.forEach { list ->
+            val idx = list.indexOfFirst { it.id == id }
+            if (idx >= 0) {
+                list[idx] = list[idx].copy(
+                    text = trimmed,
+                    priority = priority,
+                    startTime = startTime,
+                    endTime = endTime,
+                )
+            }
+        }
+        scope.launch {
+            try {
+                repo.update(id, trimmed, priority, startTime, endTime)
+            } catch (t: Throwable) {
+                loadError = "동기화 실패: ${t.message}"
+            }
         }
     }
 
     fun delete(id: String) {
-        todos.removeAll { it.id == id }
+        cache.values.forEach { list -> list.removeAll { it.id == id } }
+        scope.launch {
+            try {
+                repo.delete(id)
+            } catch (t: Throwable) {
+                loadError = "동기화 실패: ${t.message}"
+            }
+        }
     }
 
     fun todosFor(scope: Scope): List<TodoEntity> {
         val anchor = scope.anchorDateOf(selectedDate)
-        val list = todos.filter { it.scope == scope && it.targetDate == anchor }
+        val list = cache[CacheKey(scope, anchor)].orEmpty()
         return if (sortByPriority) {
             list.sortedWith(
                 compareBy<TodoEntity> { it.done }
@@ -126,7 +181,11 @@ class TodoState {
     }
 
     val dayDates: Set<LocalDate>
-        get() = todos.filter { it.scope == Scope.DAY }.map { it.targetDate }.toSet()
+        get() = cache.entries
+            .filter { it.key.scope == Scope.DAY }
+            .flatMap { it.value }
+            .map { it.targetDate }
+            .toSet()
 }
 
 private fun priorityWeight(p: Priority): Int = when (p) {

@@ -32,6 +32,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,7 +63,7 @@ import java.time.LocalDate
 
 @Composable
 fun TodoScreen(
-    state: TodoState = remember { TodoState() },
+    state: TodoState,
     user: AuthUser? = null,
     onSignOut: () -> Unit = {},
 ) {
@@ -72,6 +73,10 @@ fun TodoScreen(
     var sheetOpen by remember { mutableStateOf(false) }
     var calendarOpen by remember { mutableStateOf(false) }
     var editingTodo by remember { mutableStateOf<TodoEntity?>(null) }
+
+    LaunchedEffect(currentScope, state.selectedDate) {
+        state.setActive(currentScope)
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(

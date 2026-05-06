@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import java.awt.Desktop
@@ -28,11 +30,57 @@ class AuthException(message: String) : RuntimeException(message)
 
 class AuthRepository {
     private val httpClient: HttpClient = HttpClient.newHttpClient()
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+    }
     private val random = SecureRandom()
 
     private val _session = MutableStateFlow<AuthSession?>(null)
     val session: StateFlow<AuthSession?> = _session.asStateFlow()
+
+    private val refreshLock = Mutex()
+    private val refreshSkewSec = 60L
+
+    suspend fun freshIdToken(): String {
+        val s = _session.value ?: throw AuthException("No active session")
+        val now = Instant.now().epochSecond
+        if (s.firebaseTokenExpiryEpochSec - refreshSkewSec > now) return s.firebaseIdToken
+        return refreshSession().firebaseIdToken
+    }
+
+    private suspend fun refreshSession(): AuthSession = refreshLock.withLock {
+        val current = _session.value ?: throw AuthException("No active session")
+        val now = Instant.now().epochSecond
+        if (current.firebaseTokenExpiryEpochSec - refreshSkewSec > now) return current
+
+        val updated = withContext(Dispatchers.IO) {
+            val form = mapOf(
+                "grant_type" to "refresh_token",
+                "refresh_token" to current.firebaseRefreshToken,
+            ).entries.joinToString("&") { (k, v) -> "${urlEncode(k)}=${urlEncode(v)}" }
+            val req = HttpRequest.newBuilder()
+                .uri(URI("${OAuthConfig.FIREBASE_SECURE_TOKEN_URL}?key=${OAuthConfig.FIREBASE_API_KEY}"))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString(form))
+                .build()
+            val resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString())
+            if (resp.statusCode() / 100 != 2) {
+                throw AuthException("Token refresh failed (${resp.statusCode()}): ${resp.body()}")
+            }
+            val parsed = json.decodeFromString(FirebaseRefreshResponse.serializer(), resp.body())
+            val newId = parsed.idToken ?: throw AuthException("Refresh missing id_token")
+            val newRefresh = parsed.refreshToken ?: current.firebaseRefreshToken
+            val expiresIn = parsed.expiresIn?.toLongOrNull() ?: 3600L
+            current.copy(
+                firebaseIdToken = newId,
+                firebaseRefreshToken = newRefresh,
+                firebaseTokenExpiryEpochSec = now + expiresIn,
+            )
+        }
+        _session.value = updated
+        updated
+    }
 
     suspend fun signInWithGoogle(): AuthSession = withContext(Dispatchers.IO) {
         val codeVerifier = generateCodeVerifier()
@@ -195,6 +243,7 @@ class AuthRepository {
     ): GoogleTokenResponse {
         val form = mapOf(
             "client_id" to OAuthConfig.GOOGLE_CLIENT_ID,
+            "client_secret" to OAuthConfig.googleClientSecret,
             "code" to code,
             "redirect_uri" to redirectUri,
             "grant_type" to "authorization_code",

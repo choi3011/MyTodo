@@ -26,8 +26,9 @@ local.properties
 .DS_Store
 Thumbs.db
 
-# Firebase (do not commit project secrets to public repo)
+# Firebase / OAuth (do not commit project secrets to public repo)
 app/google-services.json
+client_secret*.json
 
 # Claude Code working files
 .claude/
@@ -42,4 +43,6 @@ app/google-services.json
 *.mp4
 /check.png
 /screen*.png
+/*.png
+/*.txt
 /ui.xml

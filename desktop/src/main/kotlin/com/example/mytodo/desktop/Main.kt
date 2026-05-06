@@ -1,5 +1,6 @@
 package com.example.mytodo.desktop
 
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -11,13 +12,16 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.example.mytodo.desktop.auth.AuthRepository
+import com.example.mytodo.desktop.data.TodoRepository
 import com.example.mytodo.desktop.theme.MyTodoTheme
 import com.example.mytodo.desktop.ui.LoginScreen
 import com.example.mytodo.desktop.ui.TodoScreen
+import com.example.mytodo.desktop.ui.TodoState
 import kotlinx.coroutines.launch
 
 fun main() = application {
     val authRepo = remember { AuthRepository() }
+    val todoRepo = remember { TodoRepository(authRepo) }
 
     Window(
         onCloseRequest = ::exitApplication,
@@ -50,7 +54,14 @@ fun main() = application {
                     errorMessage = signInError,
                 )
             } else {
+                val todoState = remember(session?.user?.uid) {
+                    TodoState(todoRepo, scope)
+                }
+                DisposableEffect(todoState) {
+                    onDispose { todoState.stop() }
+                }
                 TodoScreen(
+                    state = todoState,
                     user = session?.user,
                     onSignOut = { authRepo.signOut() },
                 )

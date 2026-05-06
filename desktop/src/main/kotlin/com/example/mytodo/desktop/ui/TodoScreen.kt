@@ -9,12 +9,18 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -22,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,8 +39,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.mytodo.desktop.auth.AuthUser
 import com.example.mytodo.desktop.data.Priority
 import com.example.mytodo.desktop.data.Scope
 import com.example.mytodo.desktop.data.TodoEntity
@@ -46,11 +55,17 @@ import com.example.mytodo.desktop.ui.components.TodoRow
 import com.example.mytodo.desktop.ui.components.accent
 import com.example.mytodo.desktop.ui.components.addLabel
 import com.example.mytodo.desktop.ui.components.tabLabel
+import com.example.mytodo.desktop.theme.BrandCoral
+import com.example.mytodo.desktop.theme.BrandIndigo
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 @Composable
-fun TodoScreen(state: TodoState = remember { TodoState() }) {
+fun TodoScreen(
+    state: TodoState = remember { TodoState() },
+    user: AuthUser? = null,
+    onSignOut: () -> Unit = {},
+) {
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { Scope.entries.size })
     val coroutineScope = rememberCoroutineScope()
     val currentScope = Scope.entries[pagerState.currentPage]
@@ -66,6 +81,8 @@ fun TodoScreen(state: TodoState = remember { TodoState() }) {
                     horizontalAlignment = Alignment.End,
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    UserMiniFab(user = user, onSignOut = onSignOut)
+                    CalendarMiniFab(onClick = { calendarOpen = true })
                     GradientPillButton(
                         onClick = { sheetOpen = true },
                         icon = Icons.Rounded.Add,
@@ -140,6 +157,80 @@ fun TodoScreen(state: TodoState = remember { TodoState() }) {
             onDismiss = { calendarOpen = false },
             onSelect = { state.chooseDate(it) },
         )
+    }
+}
+
+@Composable
+private fun UserMiniFab(user: AuthUser?, onSignOut: () -> Unit) {
+    var menuOpen by remember { mutableStateOf(false) }
+    val initial = user?.displayName?.firstOrNull()?.uppercase()
+        ?: user?.email?.firstOrNull()?.uppercase()
+        ?: "?"
+    Box {
+        Surface(
+            onClick = { menuOpen = true },
+            shape = CircleShape,
+            color = BrandIndigo,
+            shadowElevation = 6.dp,
+            modifier = Modifier.size(52.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = initial,
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                )
+            }
+        }
+        DropdownMenu(
+            expanded = menuOpen,
+            onDismissRequest = { menuOpen = false },
+        ) {
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        text = user?.email ?: "익명",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                onClick = {},
+                enabled = false,
+            )
+            DropdownMenuItem(
+                text = { Text("로그아웃", color = BrandCoral) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.Logout,
+                        contentDescription = null,
+                        tint = BrandCoral,
+                    )
+                },
+                onClick = {
+                    menuOpen = false
+                    onSignOut()
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun CalendarMiniFab(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 6.dp,
+        modifier = Modifier.size(52.dp),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = Icons.Rounded.CalendarMonth,
+                contentDescription = "캘린더",
+                tint = BrandIndigo,
+            )
+        }
     }
 }
 

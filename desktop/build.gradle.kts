@@ -30,6 +30,14 @@ compose.desktop {
             description = "MyTodo desktop client"
             vendor = "choi3011"
 
+            modules(
+                "java.net.http",
+                "jdk.httpserver",
+                "java.naming",
+                "java.management",
+                "jdk.unsupported",
+            )
+
             windows {
                 iconFile.set(project.file("src/main/resources/icon.ico"))
                 menuGroup = "MyTodo"

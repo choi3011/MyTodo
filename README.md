@@ -1,10 +1,10 @@
 # MyTodo
 
-> 모바일과 데스크톱이 같은 데이터를 실시간으로 동기화하는 할 일 관리 앱
+> 모바일과 데스크톱이 같은 데이터를 실시간으로 동기화하는 Todo 관리 앱
 
 **한국어** &nbsp;|&nbsp; [English](README.en.md)
 
-Material You의 stock 룩을 일부러 피하고 보라+마젠타 그라디언트로 직접 디자인한 expressive UI. Android 앱과 Compose Desktop 앱이 동일한 Firebase 백엔드를 공유해서, 한 쪽에서 만든 todo가 거의 실시간으로 다른 쪽에 보임.
+안드로이드와 데스크톱에서 모두 동작하는 Todo 관리 앱. 두 클라이언트가 같은 Firebase 백엔드를 공유해서, 한 쪽에서 추가한 todo가 다른 쪽에도 거의 실시간으로 반영됨. UI는 Material You의 기본 룩을 피하고 보라-마젠타 그라디언트와 hero 타이포그래피로 직접 디자인했음.
 
 ## 화면
 
@@ -173,10 +173,3 @@ Compose Desktop에는 Google sign-in 표준 SDK가 없음. RFC 8252 (OAuth 2.0 f
 - **Firestore 과금 모델 직관 — list = N reads** — 폴링 + 무필터 list가 어떻게 비용을 폭증시키는지 측정. server-side 필터의 가치를 정량화.
 - **OAuth 데스크톱 플로우** — RFC 8252의 loopback redirect + PKCE 패턴은 표준이지만 SDK 없이 직접 구현해보면 토큰의 흐름이 명확해짐.
 - **세션 영속화 트레이드오프** — refresh token을 평문 파일로 저장하는 단순함 vs OS 키체인 통합의 보안. 개인 데스크톱 환경에선 user home 권한에 의존하는 게 합리적이라고 판단.
-
-## 다음 작업
-
-- [ ] 데스크톱 윈도우 focus 상실 시 폴링 일시정지 (현재는 minimize만 감지)
-- [ ] Compose Desktop의 Listen 채널 직접 구현 (gRPC) — 진짜 push 기반으로 비용 더 줄이기
-- [ ] CI/CD: PR마다 자동 빌드, 릴리스 시 MSI/DMG 자동 생성
-- [ ] iOS 클라이언트 추가 (Compose Multiplatform iOS 타겟)

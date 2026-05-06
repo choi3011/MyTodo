@@ -24,3 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "MyTodo"
 include(":app")
+include(":desktop")

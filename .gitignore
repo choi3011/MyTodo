@@ -1,0 +1,45 @@
+# Gradle / Build
+*.iml
+.gradle
+.kotlin
+/build
+/captures
+.externalNativeBuild
+.cxx
+**/build/
+
+# Local config
+/local.properties
+local.properties
+
+# IntelliJ / Android Studio
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+/.idea/deploymentTargetSelector.xml
+/.idea/deploymentTargetDropDown.xml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Firebase (do not commit project secrets to public repo)
+app/google-services.json
+
+# Claude Code working files
+.claude/
+
+# Dev-time scratch artifacts
+/frames_open/
+/frames_v2/
+/video_frames/
+/video_frames2/
+/extract_frames.py
+/extract_v2.py
+*.mp4
+/check.png
+/screen*.png
+/ui.xml

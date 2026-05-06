@@ -29,9 +29,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.DpOffset
@@ -42,6 +47,7 @@ import com.example.mytodo.desktop.theme.BrandIndigo
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun TodoRow(
     todo: TodoEntity,
@@ -54,6 +60,7 @@ fun TodoRow(
         targetValue = if (todo.done) 0.45f else 1f,
         label = "textAlpha",
     )
+    val density = LocalDensity.current
     var menuOpen by remember { mutableStateOf(false) }
     var pressed by remember { mutableStateOf(false) }
     var pressOffset by remember { mutableStateOf(DpOffset.Zero) }
@@ -84,6 +91,13 @@ fun TodoRow(
                         menuOpen = true
                     },
                 )
+            }
+            .onPointerEvent(PointerEventType.Press) { event ->
+                if (event.buttons.isSecondaryPressed) {
+                    val pos = event.changes.first().position
+                    pressOffset = with(density) { DpOffset(pos.x.toDp(), 0.dp) }
+                    menuOpen = true
+                }
             }
             .padding(horizontal = 24.dp, vertical = 16.dp),
     ) {

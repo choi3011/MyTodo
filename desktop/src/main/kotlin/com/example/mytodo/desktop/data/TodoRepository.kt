@@ -13,6 +13,19 @@ class TodoRepository(
 
     private fun currentUid(): String? = auth.session.value?.user?.uid
 
+    suspend fun fetchDayDates(): Set<LocalDate> {
+        val uid = currentUid() ?: return emptySet()
+        val docs = firestore.runQuery(
+            parentDocumentPath = "users/$uid",
+            collectionId = "todos",
+            fieldEquals = listOf("scope" to stringV(Scope.DAY.name)),
+        )
+        return docs.mapNotNull { doc ->
+            doc.fields["targetDate"]?.asString()
+                ?.let { s -> runCatching { LocalDate.parse(s) }.getOrNull() }
+        }.toSet()
+    }
+
     suspend fun fetchByScopeAndDate(scope: Scope, anchor: LocalDate): List<TodoEntity> {
         val uid = currentUid() ?: return emptyList()
         val docs = firestore.runQuery(

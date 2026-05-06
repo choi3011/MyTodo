@@ -1,12 +1,14 @@
 package com.example.mytodo.desktop
 
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -22,17 +24,30 @@ import kotlinx.coroutines.launch
 fun main() = application {
     val authRepo = remember { AuthRepository() }
     val todoRepo = remember { TodoRepository(authRepo) }
+    val windowState = rememberWindowState(width = 480.dp, height = 820.dp)
+
+    var bootstrapped by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        runCatching { authRepo.restoreSession() }
+        bootstrapped = true
+    }
 
     Window(
         onCloseRequest = ::exitApplication,
         title = "MyTodo",
-        state = rememberWindowState(width = 480.dp, height = 820.dp),
+        icon = painterResource("icon.png"),
+        state = windowState,
     ) {
         MyTodoTheme(darkTheme = false) {
             val session by authRepo.session.collectAsState()
             val scope = rememberCoroutineScope()
             var signingIn by remember { mutableStateOf(false) }
             var signInError by remember { mutableStateOf<String?>(null) }
+
+            if (!bootstrapped) {
+                // brief loading state — leave the window blank during restore
+                return@MyTodoTheme
+            }
 
             if (session == null) {
                 LoginScreen(
@@ -60,10 +75,16 @@ fun main() = application {
                 DisposableEffect(todoState) {
                     onDispose { todoState.stop() }
                 }
+                LaunchedEffect(todoState) {
+                    todoState.refreshDayDates()
+                }
+                LaunchedEffect(windowState.isMinimized) {
+                    todoState.setVisible(!windowState.isMinimized)
+                }
                 TodoScreen(
                     state = todoState,
                     user = session?.user,
-                    onSignOut = { authRepo.signOut() },
+                    onSignOut = { scope.launch { authRepo.signOut() } },
                 )
             }
         }

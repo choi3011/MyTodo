@@ -27,6 +27,22 @@ compose.desktop {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "MyTodo"
             packageVersion = "1.0.0"
+            description = "MyTodo desktop client"
+            vendor = "choi3011"
+
+            windows {
+                iconFile.set(project.file("src/main/resources/icon.ico"))
+                menuGroup = "MyTodo"
+                shortcut = true
+                dirChooser = true
+                upgradeUuid = "9b3a52a4-d1e3-4f77-ae21-8e2c0f5b9d10"
+            }
+            macOS {
+                iconFile.set(project.file("src/main/resources/icon.png"))
+            }
+            linux {
+                iconFile.set(project.file("src/main/resources/icon.png"))
+            }
         }
     }
 }

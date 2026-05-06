@@ -2,6 +2,7 @@ package com.example.mytodo.desktop.auth
 
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,6 +43,47 @@ class AuthRepository {
     private val refreshLock = Mutex()
     private val refreshSkewSec = 60L
 
+    private val sessionFile: File by lazy {
+        val home = System.getProperty("user.home") ?: "."
+        val dir = File(home, ".mytodo")
+        if (!dir.exists()) dir.mkdirs()
+        File(dir, "session.json")
+    }
+
+    suspend fun restoreSession(): AuthSession? = withContext(Dispatchers.IO) {
+        if (!sessionFile.exists()) return@withContext null
+        val saved = try {
+            json.decodeFromString(AuthSession.serializer(), sessionFile.readText())
+        } catch (_: Throwable) {
+            sessionFile.delete()
+            return@withContext null
+        }
+        _session.value = saved
+        val now = Instant.now().epochSecond
+        if (saved.firebaseTokenExpiryEpochSec - refreshSkewSec <= now) {
+            try {
+                refreshSession()
+            } catch (_: Throwable) {
+                _session.value = null
+                sessionFile.delete()
+                return@withContext null
+            }
+        }
+        _session.value
+    }
+
+    private fun persistSession(s: AuthSession?) {
+        try {
+            if (s == null) {
+                if (sessionFile.exists()) sessionFile.delete()
+            } else {
+                sessionFile.writeText(json.encodeToString(AuthSession.serializer(), s))
+            }
+        } catch (_: Throwable) {
+            // best-effort persistence; user can re-sign in if it fails
+        }
+    }
+
     suspend fun freshIdToken(): String {
         val s = _session.value ?: throw AuthException("No active session")
         val now = Instant.now().epochSecond
@@ -79,6 +121,7 @@ class AuthRepository {
             )
         }
         _session.value = updated
+        persistSession(updated)
         updated
     }
 
@@ -124,14 +167,16 @@ class AuthRepository {
                 firebaseTokenExpiryEpochSec = Instant.now().epochSecond + expiresIn,
             )
             _session.value = sess
+            persistSession(sess)
             sess
         } finally {
             server.stop(0)
         }
     }
 
-    fun signOut() {
+    suspend fun signOut() {
         _session.value = null
+        withContext(Dispatchers.IO) { persistSession(null) }
     }
 
     private fun buildAuthUrl(redirectUri: String, codeChallenge: String, state: String): String {

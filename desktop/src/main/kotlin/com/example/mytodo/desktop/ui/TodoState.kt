@@ -38,6 +38,10 @@ class TodoState(
     private val cache: MutableMap<CacheKey, SnapshotStateList<TodoEntity>> = mutableMapOf()
     private var activeKey: CacheKey? = null
     private var activeJob: Job? = null
+    private var visible: Boolean = true
+
+    private val _dayDates = mutableStateOf<Set<LocalDate>>(emptySet())
+    val dayDates: Set<LocalDate> by _dayDates
 
     private val debounceMs = 1_000L
     private val pollIntervalMs = 15_000L
@@ -48,6 +52,22 @@ class TodoState(
         if (activeKey == key && activeJob?.isActive == true) return
         activeKey = key
         cache.getOrPut(key) { mutableStateListOf() }
+        if (visible) restartPolling(key)
+    }
+
+    fun setVisible(v: Boolean) {
+        if (visible == v) return
+        visible = v
+        val key = activeKey
+        if (v && key != null) {
+            restartPolling(key)
+        } else {
+            activeJob?.cancel()
+            activeJob = null
+        }
+    }
+
+    private fun restartPolling(key: CacheKey) {
         activeJob?.cancel()
         activeJob = this.scope.launch {
             delay(debounceMs)
@@ -58,11 +78,22 @@ class TodoState(
         }
     }
 
+    fun refreshDayDates() {
+        scope.launch {
+            try {
+                _dayDates.value = repo.fetchDayDates()
+            } catch (_: Throwable) {
+                // keep stale; calendar dots simply don't refresh this time
+            }
+        }
+    }
+
     fun stop() {
         activeJob?.cancel()
         activeJob = null
         activeKey = null
         cache.clear()
+        _dayDates.value = emptySet()
     }
 
     private suspend fun refresh(key: CacheKey) {
@@ -105,6 +136,9 @@ class TodoState(
                 val created = repo.add(trimmed, priority, scope, anchor, startTime, endTime)
                 if (created != null) {
                     cache.getOrPut(key) { mutableStateListOf() }.add(created)
+                    if (scope == Scope.DAY) {
+                        _dayDates.value = _dayDates.value + anchor
+                    }
                 }
             } catch (t: Throwable) {
                 loadError = "동기화 실패: ${t.message}"
@@ -176,16 +210,13 @@ class TodoState(
                     .thenByDescending { it.createdAt },
             )
         } else {
-            list
+            list.sortedWith(
+                compareBy<TodoEntity> { it.done }
+                    .thenByDescending { it.createdAt },
+            )
         }
     }
 
-    val dayDates: Set<LocalDate>
-        get() = cache.entries
-            .filter { it.key.scope == Scope.DAY }
-            .flatMap { it.value }
-            .map { it.targetDate }
-            .toSet()
 }
 
 private fun priorityWeight(p: Priority): Int = when (p) {

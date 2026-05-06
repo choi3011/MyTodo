@@ -87,7 +87,10 @@ fun TodoScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     UserMiniFab(user = user, onSignOut = onSignOut)
-                    CalendarMiniFab(onClick = { calendarOpen = true })
+                    CalendarMiniFab(onClick = {
+                        state.refreshDayDates()
+                        calendarOpen = true
+                    })
                     GradientPillButton(
                         onClick = { sheetOpen = true },
                         icon = Icons.Rounded.Add,

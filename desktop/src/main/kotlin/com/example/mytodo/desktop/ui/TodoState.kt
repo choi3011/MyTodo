@@ -202,7 +202,7 @@ class TodoState(
 
     fun todosFor(scope: Scope): List<TodoEntity> {
         val anchor = scope.anchorDateOf(selectedDate)
-        val list = cache[CacheKey(scope, anchor)].orEmpty()
+        val list = cache.getOrPut(CacheKey(scope, anchor)) { mutableStateListOf() }
         return if (sortByPriority) {
             list.sortedWith(
                 compareBy<TodoEntity> { it.done }

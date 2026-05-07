@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -78,8 +79,9 @@ fun main() = application {
                 LaunchedEffect(todoState) {
                     todoState.refreshDayDates()
                 }
-                LaunchedEffect(windowState.isMinimized) {
-                    todoState.setVisible(!windowState.isMinimized)
+                val windowInfo = LocalWindowInfo.current
+                LaunchedEffect(windowState.isMinimized, windowInfo.isWindowFocused) {
+                    todoState.setVisible(!windowState.isMinimized && windowInfo.isWindowFocused)
                 }
                 TodoScreen(
                     state = todoState,

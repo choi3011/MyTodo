@@ -36,6 +36,7 @@ class TodoState(
         private set
 
     private val cache: MutableMap<CacheKey, SnapshotStateList<TodoEntity>> = mutableMapOf()
+    private val lastRefreshAt: MutableMap<CacheKey, Long> = mutableMapOf()
     private var activeKey: CacheKey? = null
     private var activeJob: Job? = null
     private var visible: Boolean = true
@@ -43,7 +44,7 @@ class TodoState(
     private val _dayDates = mutableStateOf<Set<LocalDate>>(emptySet())
     val dayDates: Set<LocalDate> by _dayDates
 
-    private val debounceMs = 1_000L
+    private val debounceMs = 100L
     private val pollIntervalMs = 15_000L
 
     fun setActive(scope: Scope) {
@@ -71,8 +72,13 @@ class TodoState(
         activeJob?.cancel()
         activeJob = this.scope.launch {
             delay(debounceMs)
+            val sinceLast = System.currentTimeMillis() - (lastRefreshAt[key] ?: 0L)
+            if (sinceLast < pollIntervalMs) {
+                delay(pollIntervalMs - sinceLast)
+            }
             while (isActive) {
                 refresh(key)
+                lastRefreshAt[key] = System.currentTimeMillis()
                 delay(pollIntervalMs)
             }
         }
@@ -93,6 +99,7 @@ class TodoState(
         activeJob = null
         activeKey = null
         cache.clear()
+        lastRefreshAt.clear()
         _dayDates.value = emptySet()
     }
 

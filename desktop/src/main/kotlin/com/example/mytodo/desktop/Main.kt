@@ -21,8 +21,35 @@ import com.example.mytodo.desktop.ui.LoginScreen
 import com.example.mytodo.desktop.ui.TodoScreen
 import com.example.mytodo.desktop.ui.TodoState
 import kotlinx.coroutines.launch
+import java.io.File
+import java.io.RandomAccessFile
+import java.nio.channels.FileChannel
+import java.nio.channels.FileLock
 
-fun main() = application {
+private var instanceLock: FileLock? = null
+private var instanceChannel: FileChannel? = null
+
+private fun acquireSingleInstanceLock(): Boolean {
+    val home = System.getProperty("user.home") ?: return true
+    val lockFile = File(home, ".mytodo/lock")
+    lockFile.parentFile?.mkdirs()
+    val raf = RandomAccessFile(lockFile, "rw")
+    val channel = raf.channel
+    val lock = runCatching { channel.tryLock() }.getOrNull()
+    return if (lock != null) {
+        instanceLock = lock
+        instanceChannel = channel
+        true
+    } else {
+        runCatching { channel.close() }
+        runCatching { raf.close() }
+        false
+    }
+}
+
+fun main() {
+    if (!acquireSingleInstanceLock()) return
+    application {
     val authRepo = remember { AuthRepository() }
     val todoRepo = remember { TodoRepository(authRepo) }
     val windowState = rememberWindowState(width = 480.dp, height = 820.dp)
@@ -90,5 +117,6 @@ fun main() = application {
                 )
             }
         }
+    }
     }
 }

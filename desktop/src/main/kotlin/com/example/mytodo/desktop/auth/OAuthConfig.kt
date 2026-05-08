@@ -22,25 +22,30 @@ object OAuthConfig {
     val googleClientSecret: String by lazy {
         loadProperty("google.oauth.client_secret")
             ?: throw IllegalStateException(
-                "google.oauth.client_secret missing from local.properties — " +
-                    "see README for setup",
+                "google.oauth.client_secret missing — set it in either " +
+                    "<repo>/local.properties (dev) or " +
+                    "~/.mytodo/config.properties (installed)",
             )
     }
 
     private fun loadProperty(key: String): String? {
-        val file = findLocalProperties() ?: return null
+        val file = findConfigFile() ?: return null
         val props = Properties()
         file.inputStream().use { props.load(it) }
         return props.getProperty(key)
     }
 
-    private fun findLocalProperties(): File? {
+    private fun findConfigFile(): File? {
+        // Dev: walk up from cwd looking for local.properties
         var dir: File? = File(".").canonicalFile
         while (dir != null) {
             val candidate = File(dir, "local.properties")
             if (candidate.exists()) return candidate
             dir = dir.parentFile
         }
-        return null
+        // Installed: ~/.mytodo/config.properties
+        val home = System.getProperty("user.home") ?: return null
+        val installedConfig = File(home, ".mytodo/config.properties")
+        return if (installedConfig.exists()) installedConfig else null
     }
 }

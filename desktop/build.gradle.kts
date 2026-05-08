@@ -26,7 +26,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "MyTodo"
-            packageVersion = "1.0.2"
+            packageVersion = "1.0.4"
             description = "MyTodo desktop client"
             vendor = "choi3011"
 

@@ -45,6 +45,33 @@ class TodoRepository(
         awaitClose { reg.remove() }
     }
 
+    suspend fun fetchOverdueIncomplete(today: LocalDate): List<TodoEntity> {
+        val ref = userTodos() ?: return emptyList()
+        val snap = ref
+            .whereLessThan("targetDate", today.toString())
+            .whereEqualTo("done", false)
+            .get()
+            .await()
+        return snap.documents.mapNotNull { it.toTodo() }
+            .sortedWith(
+                compareByDescending<TodoEntity> { it.targetDate }
+                    .thenByDescending { it.createdAt },
+            )
+    }
+
+    suspend fun fetchWeek(weekStart: LocalDate): List<TodoEntity> {
+        val ref = userTodos() ?: return emptyList()
+        val weekEnd = weekStart.plusDays(6)
+        val snap = ref
+            .whereEqualTo("scope", Scope.DAY.name)
+            .whereGreaterThanOrEqualTo("targetDate", weekStart.toString())
+            .whereLessThanOrEqualTo("targetDate", weekEnd.toString())
+            .get()
+            .await()
+        return snap.documents.mapNotNull { it.toTodo() }
+            .sortedBy { it.targetDate }
+    }
+
     fun observeDayDates(): Flow<List<LocalDate>> = callbackFlow {
         val ref = userTodos()
         if (ref == null) {
@@ -115,6 +142,10 @@ class TodoRepository(
 
     suspend fun delete(id: String) {
         userTodos()?.document(id)?.delete()?.await()
+    }
+
+    suspend fun reanchor(id: String, newAnchor: LocalDate) {
+        userTodos()?.document(id)?.update("targetDate", newAnchor.toString())?.await()
     }
 }
 

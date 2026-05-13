@@ -19,6 +19,8 @@ import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.CalendarViewWeek
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -62,10 +64,12 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 @Composable
-fun TodoScreen(
+private fun MainTodoScreen(
     state: TodoState,
     user: AuthUser? = null,
     onSignOut: () -> Unit = {},
+    onOpenOverdue: () -> Unit = {},
+    onOpenWeekly: () -> Unit = {},
 ) {
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { Scope.entries.size })
     val coroutineScope = rememberCoroutineScope()
@@ -86,7 +90,12 @@ fun TodoScreen(
                     horizontalAlignment = Alignment.End,
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    UserMiniFab(user = user, onSignOut = onSignOut)
+                    UserMiniFab(
+                        user = user,
+                        onSignOut = onSignOut,
+                        onOpenOverdue = onOpenOverdue,
+                        onOpenWeekly = onOpenWeekly,
+                    )
                     CalendarMiniFab(onClick = {
                         state.refreshDayDates()
                         calendarOpen = true
@@ -169,7 +178,12 @@ fun TodoScreen(
 }
 
 @Composable
-private fun UserMiniFab(user: AuthUser?, onSignOut: () -> Unit) {
+private fun UserMiniFab(
+    user: AuthUser?,
+    onSignOut: () -> Unit,
+    onOpenOverdue: () -> Unit,
+    onOpenWeekly: () -> Unit,
+) {
     var menuOpen by remember { mutableStateOf(false) }
     val initial = user?.displayName?.firstOrNull()?.uppercase()
         ?: user?.email?.firstOrNull()?.uppercase()
@@ -204,6 +218,34 @@ private fun UserMiniFab(user: AuthUser?, onSignOut: () -> Unit) {
                 },
                 onClick = {},
                 enabled = false,
+            )
+            DropdownMenuItem(
+                text = { Text("미완료 보기") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Rounded.History,
+                        contentDescription = null,
+                        tint = BrandIndigo,
+                    )
+                },
+                onClick = {
+                    menuOpen = false
+                    onOpenOverdue()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("주간 요약") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Rounded.CalendarViewWeek,
+                        contentDescription = null,
+                        tint = BrandIndigo,
+                    )
+                },
+                onClick = {
+                    menuOpen = false
+                    onOpenWeekly()
+                },
             )
             DropdownMenuItem(
                 text = { Text("로그아웃", color = BrandCoral) },
@@ -389,3 +431,46 @@ private fun ScopeTabs(
         }
     }
 }
+
+@Composable
+fun TodoScreen(
+    state: TodoState,
+    user: AuthUser? = null,
+    onSignOut: () -> Unit = {},
+) {
+    var currentScreen by remember { mutableStateOf(CurrentScreen.Main) }
+    when (currentScreen) {
+        CurrentScreen.Main -> MainTodoScreen(
+            state = state,
+            user = user,
+            onSignOut = onSignOut,
+            onOpenOverdue = {
+                state.loadOverdue()
+                currentScreen = CurrentScreen.Overdue
+            },
+            onOpenWeekly = {
+                state.loadWeek()
+                currentScreen = CurrentScreen.Weekly
+            },
+        )
+        CurrentScreen.Overdue -> OverdueScreen(
+            overdueTodos = state.overdueTodos,
+            loading = state.overdueLoading,
+            onBack = { currentScreen = CurrentScreen.Main },
+            onMarkDone = { state.markDoneFromOverdue(it) },
+            onReanchor = { state.reanchorFromOverdue(it) },
+        )
+        CurrentScreen.Weekly -> WeeklySummaryScreen(
+            weekStart = state.weekStart,
+            weekTodos = state.weekTodos,
+            loading = state.weekLoading,
+            onBack = { currentScreen = CurrentScreen.Main },
+            onPrevious = { state.previousWeek() },
+            onNext = { state.nextWeek() },
+            onReset = { state.resetWeek() },
+            onToggle = { id, done -> state.toggleInWeek(id, done) },
+        )
+    }
+}
+
+private enum class CurrentScreen { Main, Overdue, Weekly }

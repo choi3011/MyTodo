@@ -23,8 +23,10 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.temporal.TemporalAdjusters
 
 enum class TodoFilter { ALL, ACTIVE, DONE }
 
@@ -132,6 +134,96 @@ class TodoViewModel(
     fun signOut() {
         viewModelScope.launch { authRepo.signOut() }
     }
+
+    // ====== Overdue + Weekly ======
+
+    private val _overdueTodos = MutableStateFlow<List<TodoEntity>>(emptyList())
+    val overdueTodos: StateFlow<List<TodoEntity>> = _overdueTodos.asStateFlow()
+
+    private val _overdueLoading = MutableStateFlow(false)
+    val overdueLoading: StateFlow<Boolean> = _overdueLoading.asStateFlow()
+
+    private val _weekStart = MutableStateFlow(currentWeekStart())
+    val weekStart: StateFlow<LocalDate> = _weekStart.asStateFlow()
+
+    private val _weekTodos = MutableStateFlow<Map<LocalDate, List<TodoEntity>>>(emptyMap())
+    val weekTodos: StateFlow<Map<LocalDate, List<TodoEntity>>> = _weekTodos.asStateFlow()
+
+    private val _weekLoading = MutableStateFlow(false)
+    val weekLoading: StateFlow<Boolean> = _weekLoading.asStateFlow()
+
+    fun loadOverdue() {
+        if (_overdueLoading.value) return
+        _overdueLoading.value = true
+        viewModelScope.launch {
+            try {
+                val today = LocalDate.now()
+                val result = repo.fetchOverdueIncomplete(today)
+                android.util.Log.d("MyTodoDiag", "loadOverdue: today=$today, count=${result.size}")
+                _overdueTodos.value = result
+            } catch (e: Throwable) {
+                android.util.Log.e("MyTodoDiag", "loadOverdue failed: ${e.javaClass.simpleName}: ${e.message}")
+            } finally {
+                _overdueLoading.value = false
+            }
+        }
+    }
+
+    fun loadWeek() {
+        if (_weekLoading.value) return
+        val start = _weekStart.value
+        _weekLoading.value = true
+        viewModelScope.launch {
+            try {
+                val list = repo.fetchWeek(start)
+                android.util.Log.d("MyTodoDiag", "loadWeek: weekStart=$start, count=${list.size}")
+                _weekTodos.value = (0..6).associate { i ->
+                    val day = start.plusDays(i.toLong())
+                    day to list.filter { it.targetDate == day }
+                }
+            } catch (e: Throwable) {
+                android.util.Log.e("MyTodoDiag", "loadWeek failed: ${e.javaClass.simpleName}: ${e.message}")
+            } finally {
+                _weekLoading.value = false
+            }
+        }
+    }
+
+    fun previousWeek() {
+        _weekStart.value = _weekStart.value.minusWeeks(1)
+        loadWeek()
+    }
+
+    fun nextWeek() {
+        _weekStart.value = _weekStart.value.plusWeeks(1)
+        loadWeek()
+    }
+
+    fun resetWeek() {
+        _weekStart.value = currentWeekStart()
+        loadWeek()
+    }
+
+    fun markDoneFromOverdue(id: String) {
+        _overdueTodos.value = _overdueTodos.value.filter { it.id != id }
+        viewModelScope.launch { repo.setDone(id, true) }
+    }
+
+    fun reanchorFromOverdue(todo: TodoEntity) {
+        _overdueTodos.value = _overdueTodos.value.filter { it.id != todo.id }
+        val newAnchor = todo.scope.anchorDateOf(LocalDate.now())
+        viewModelScope.launch { repo.reanchor(todo.id, newAnchor) }
+    }
+
+    fun toggleInWeek(id: String, done: Boolean) {
+        _weekTodos.value = _weekTodos.value.mapValues { (_, list) ->
+            list.map { if (it.id == id) it.copy(done = done) else it }
+        }
+        viewModelScope.launch { repo.setDone(id, done) }
+    }
+
+    private fun currentWeekStart(): LocalDate =
+        LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
 
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {

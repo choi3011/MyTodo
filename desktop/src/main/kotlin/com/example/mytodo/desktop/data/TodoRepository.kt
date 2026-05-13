@@ -39,6 +39,39 @@ class TodoRepository(
         return docs.mapNotNull { it.toTodo() }
     }
 
+    suspend fun fetchOverdueIncomplete(today: LocalDate): List<TodoEntity> {
+        val uid = currentUid() ?: return emptyList()
+        val docs = firestore.runQuery(
+            parentDocumentPath = "users/$uid",
+            collectionId = "todos",
+            fieldEquals = listOf("done" to boolV(false)),
+            fieldFilters = listOf(
+                Triple("targetDate", "LESS_THAN", stringV(today.toString())),
+            ),
+        )
+        return docs.mapNotNull { it.toTodo() }
+            .sortedWith(
+                compareByDescending<TodoEntity> { it.targetDate }
+                    .thenByDescending { it.createdAt },
+            )
+    }
+
+    suspend fun fetchWeek(weekStart: LocalDate): List<TodoEntity> {
+        val uid = currentUid() ?: return emptyList()
+        val weekEnd = weekStart.plusDays(6)
+        val docs = firestore.runQuery(
+            parentDocumentPath = "users/$uid",
+            collectionId = "todos",
+            fieldEquals = listOf("scope" to stringV(Scope.DAY.name)),
+            fieldFilters = listOf(
+                Triple("targetDate", "GREATER_THAN_OR_EQUAL", stringV(weekStart.toString())),
+                Triple("targetDate", "LESS_THAN_OR_EQUAL", stringV(weekEnd.toString())),
+            ),
+        )
+        return docs.mapNotNull { it.toTodo() }
+            .sortedBy { it.targetDate }
+    }
+
     suspend fun add(
         text: String,
         priority: Priority,
@@ -104,6 +137,14 @@ class TodoRepository(
     suspend fun delete(id: String) {
         val uid = currentUid() ?: return
         firestore.deleteDocument("${userTodosPath(uid)}/$id")
+    }
+
+    suspend fun reanchor(id: String, newAnchor: LocalDate) {
+        val uid = currentUid() ?: return
+        firestore.patchDocument(
+            documentPath = "${userTodosPath(uid)}/$id",
+            fields = mapOf("targetDate" to stringV(newAnchor.toString())),
+        )
     }
 }
 

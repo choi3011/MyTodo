@@ -15,8 +15,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.temporal.TemporalAdjusters
 
 enum class TodoFilter { ALL, ACTIVE, DONE }
 
@@ -221,6 +223,107 @@ class TodoState(
                 compareBy<TodoEntity> { it.done }
                     .thenByDescending { it.createdAt },
             )
+        }
+    }
+
+    // ====== Overdue + Weekly ======
+
+    var overdueTodos by mutableStateOf<List<TodoEntity>>(emptyList())
+        private set
+    var overdueLoading by mutableStateOf(false)
+        private set
+    var weekStart by mutableStateOf(
+        LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+    )
+        private set
+    var weekTodos by mutableStateOf<Map<LocalDate, List<TodoEntity>>>(emptyMap())
+        private set
+    var weekLoading by mutableStateOf(false)
+        private set
+
+    fun loadOverdue() {
+        if (overdueLoading) return
+        overdueLoading = true
+        scope.launch {
+            try {
+                overdueTodos = repo.fetchOverdueIncomplete(LocalDate.now())
+                loadError = null
+            } catch (t: Throwable) {
+                loadError = t.message
+            } finally {
+                overdueLoading = false
+            }
+        }
+    }
+
+    fun loadWeek() {
+        if (weekLoading) return
+        val start = weekStart
+        weekLoading = true
+        scope.launch {
+            try {
+                val list = repo.fetchWeek(start)
+                weekTodos = (0..6).associate { i ->
+                    val day = start.plusDays(i.toLong())
+                    day to list.filter { it.targetDate == day }
+                }
+                loadError = null
+            } catch (t: Throwable) {
+                loadError = t.message
+            } finally {
+                weekLoading = false
+            }
+        }
+    }
+
+    fun previousWeek() {
+        weekStart = weekStart.minusWeeks(1)
+        loadWeek()
+    }
+
+    fun nextWeek() {
+        weekStart = weekStart.plusWeeks(1)
+        loadWeek()
+    }
+
+    fun resetWeek() {
+        weekStart = LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        loadWeek()
+    }
+
+    fun markDoneFromOverdue(id: String) {
+        overdueTodos = overdueTodos.filter { it.id != id }
+        scope.launch {
+            try {
+                repo.setDone(id, true)
+            } catch (t: Throwable) {
+                loadError = "동기화 실패: ${t.message}"
+            }
+        }
+    }
+
+    fun reanchorFromOverdue(todo: TodoEntity) {
+        overdueTodos = overdueTodos.filter { it.id != todo.id }
+        val newAnchor = todo.scope.anchorDateOf(LocalDate.now())
+        scope.launch {
+            try {
+                repo.reanchor(todo.id, newAnchor)
+            } catch (t: Throwable) {
+                loadError = "동기화 실패: ${t.message}"
+            }
+        }
+    }
+
+    fun toggleInWeek(id: String, done: Boolean) {
+        weekTodos = weekTodos.mapValues { (_, list) ->
+            list.map { if (it.id == id) it.copy(done = done) else it }
+        }
+        scope.launch {
+            try {
+                repo.setDone(id, done)
+            } catch (t: Throwable) {
+                loadError = "동기화 실패: ${t.message}"
+            }
         }
     }
 

@@ -1,5 +1,6 @@
 package com.example.mytodo.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +21,8 @@ import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.CalendarViewWeek
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -63,7 +66,11 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 @Composable
-fun TodoScreen(viewModel: TodoViewModel = viewModel(factory = TodoViewModel.Factory)) {
+private fun MainTodoScreen(
+    viewModel: TodoViewModel,
+    onOpenOverdue: () -> Unit,
+    onOpenWeekly: () -> Unit,
+) {
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { Scope.entries.size })
     val coroutineScope = rememberCoroutineScope()
     val currentScope = Scope.entries[pagerState.currentPage]
@@ -83,7 +90,12 @@ fun TodoScreen(viewModel: TodoViewModel = viewModel(factory = TodoViewModel.Fact
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                UserMiniFab(user = user, onSignOut = { viewModel.signOut() })
+                UserMiniFab(
+                    user = user,
+                    onSignOut = { viewModel.signOut() },
+                    onOpenOverdue = onOpenOverdue,
+                    onOpenWeekly = onOpenWeekly,
+                )
                 CalendarMiniFab(onClick = { calendarOpen = true })
                 GradientPillButton(
                     onClick = { sheetOpen = true },
@@ -164,7 +176,12 @@ fun TodoScreen(viewModel: TodoViewModel = viewModel(factory = TodoViewModel.Fact
 }
 
 @Composable
-private fun UserMiniFab(user: FirebaseUser?, onSignOut: () -> Unit) {
+private fun UserMiniFab(
+    user: FirebaseUser?,
+    onSignOut: () -> Unit,
+    onOpenOverdue: () -> Unit,
+    onOpenWeekly: () -> Unit,
+) {
     var menuOpen by remember { mutableStateOf(false) }
     val initial = user?.displayName?.firstOrNull()?.uppercase()
         ?: user?.email?.firstOrNull()?.uppercase()
@@ -199,6 +216,34 @@ private fun UserMiniFab(user: FirebaseUser?, onSignOut: () -> Unit) {
                 },
                 onClick = {},
                 enabled = false,
+            )
+            DropdownMenuItem(
+                text = { Text("미완료 보기") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Rounded.History,
+                        contentDescription = null,
+                        tint = BrandIndigo,
+                    )
+                },
+                onClick = {
+                    menuOpen = false
+                    onOpenOverdue()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("주간 요약") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Rounded.CalendarViewWeek,
+                        contentDescription = null,
+                        tint = BrandIndigo,
+                    )
+                },
+                onClick = {
+                    menuOpen = false
+                    onOpenWeekly()
+                },
             )
             DropdownMenuItem(
                 text = { Text("로그아웃", color = BrandCoral) },
@@ -384,3 +429,51 @@ private fun ScopeTabs(
         }
     }
 }
+
+@Composable
+fun TodoScreen(viewModel: TodoViewModel = viewModel(factory = TodoViewModel.Factory)) {
+    var currentScreen by remember { mutableStateOf(CurrentScreen.Main) }
+    when (currentScreen) {
+        CurrentScreen.Main -> MainTodoScreen(
+            viewModel = viewModel,
+            onOpenOverdue = {
+                viewModel.loadOverdue()
+                currentScreen = CurrentScreen.Overdue
+            },
+            onOpenWeekly = {
+                viewModel.loadWeek()
+                currentScreen = CurrentScreen.Weekly
+            },
+        )
+        CurrentScreen.Overdue -> {
+            BackHandler { currentScreen = CurrentScreen.Main }
+            val overdueTodos by viewModel.overdueTodos.collectAsState()
+            val loading by viewModel.overdueLoading.collectAsState()
+            OverdueScreen(
+                overdueTodos = overdueTodos,
+                loading = loading,
+                onBack = { currentScreen = CurrentScreen.Main },
+                onMarkDone = { viewModel.markDoneFromOverdue(it) },
+                onReanchor = { viewModel.reanchorFromOverdue(it) },
+            )
+        }
+        CurrentScreen.Weekly -> {
+            BackHandler { currentScreen = CurrentScreen.Main }
+            val weekStart by viewModel.weekStart.collectAsState()
+            val weekTodos by viewModel.weekTodos.collectAsState()
+            val loading by viewModel.weekLoading.collectAsState()
+            WeeklySummaryScreen(
+                weekStart = weekStart,
+                weekTodos = weekTodos,
+                loading = loading,
+                onBack = { currentScreen = CurrentScreen.Main },
+                onPrevious = { viewModel.previousWeek() },
+                onNext = { viewModel.nextWeek() },
+                onReset = { viewModel.resetWeek() },
+                onToggle = { id, done -> viewModel.toggleInWeek(id, done) },
+            )
+        }
+    }
+}
+
+private enum class CurrentScreen { Main, Overdue, Weekly }

@@ -31,10 +31,11 @@ class FirestoreClient(
     suspend fun runQuery(
         parentDocumentPath: String,
         collectionId: String,
-        fieldEquals: List<Pair<String, FirestoreValue>>,
+        fieldEquals: List<Pair<String, FirestoreValue>> = emptyList(),
+        fieldFilters: List<Triple<String, String, FirestoreValue>> = emptyList(),
     ): List<FirestoreDocument> = withContext(Dispatchers.IO) {
         val token = auth.freshIdToken()
-        val filters = fieldEquals.map { (path, value) ->
+        val equalsFilters = fieldEquals.map { (path, value) ->
             Filter(
                 fieldFilter = FieldFilter(
                     field = FieldRef(fieldPath = path),
@@ -43,6 +44,16 @@ class FirestoreClient(
                 ),
             )
         }
+        val otherFilters = fieldFilters.map { (path, op, value) ->
+            Filter(
+                fieldFilter = FieldFilter(
+                    field = FieldRef(fieldPath = path),
+                    op = op,
+                    value = value,
+                ),
+            )
+        }
+        val filters = equalsFilters + otherFilters
         val where = when {
             filters.isEmpty() -> null
             filters.size == 1 -> filters.first()

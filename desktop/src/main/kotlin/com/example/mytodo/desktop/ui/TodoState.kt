@@ -293,6 +293,10 @@ class TodoState(
 
     fun markDoneFromOverdue(id: String) {
         overdueTodos = overdueTodos.filter { it.id != id }
+        cache.values.forEach { list ->
+            val idx = list.indexOfFirst { it.id == id }
+            if (idx >= 0) list[idx] = list[idx].copy(done = true)
+        }
         scope.launch {
             try {
                 repo.setDone(id, true)
@@ -305,6 +309,8 @@ class TodoState(
     fun reanchorFromOverdue(todo: TodoEntity) {
         overdueTodos = overdueTodos.filter { it.id != todo.id }
         val newAnchor = todo.scope.anchorDateOf(LocalDate.now())
+        cache.values.forEach { list -> list.removeAll { it.id == todo.id } }
+        cache[CacheKey(todo.scope, newAnchor)]?.add(todo.copy(targetDate = newAnchor))
         scope.launch {
             try {
                 repo.reanchor(todo.id, newAnchor)
@@ -317,6 +323,10 @@ class TodoState(
     fun toggleInWeek(id: String, done: Boolean) {
         weekTodos = weekTodos.mapValues { (_, list) ->
             list.map { if (it.id == id) it.copy(done = done) else it }
+        }
+        cache.values.forEach { list ->
+            val idx = list.indexOfFirst { it.id == id }
+            if (idx >= 0) list[idx] = list[idx].copy(done = done)
         }
         scope.launch {
             try {
